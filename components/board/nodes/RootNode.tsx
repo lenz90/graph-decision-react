@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { NodeProps } from "@xyflow/react";
+import type { NodeProps } from "@xyflow/react";
 
 export type RootNodeData = {
   situation: string;
@@ -13,7 +13,7 @@ export type RootNodeData = {
   isLocked: boolean;
 };
 
-export function RootNode({ data }: NodeProps<RootNodeData>) {
+export default function RootNode({ data }: NodeProps<RootNodeData>) {
   return (
     <div className="relative w-[360px] max-w-[90vw]">
       <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/30 shadow-2xl shadow-primary/10">
@@ -53,5 +53,3 @@ export function RootNode({ data }: NodeProps<RootNodeData>) {
     </div>
   );
 }
-
-export default RootNode;
