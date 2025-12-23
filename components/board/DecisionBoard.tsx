@@ -69,7 +69,7 @@ function DecisionBoardCanvas() {
   }, []);
 
   const handleGenerateOptions = useCallback(() => {
-    if (optionsGenerated || !rootText.trim()) {
+    if (optionsGenerated || rootText.length === 0) {
       return;
     }
 
@@ -102,7 +102,7 @@ function DecisionBoardCanvas() {
       situation: rootText,
       onChange: handleRootChange,
       onGenerate: handleGenerateOptions,
-      canGenerate: !optionsGenerated && rootText.trim().length > 0,
+      canGenerate: !optionsGenerated && rootText.length > 0,
       isLocked: optionsGenerated,
     }),
     [handleGenerateOptions, handleRootChange, optionsGenerated, rootText],
