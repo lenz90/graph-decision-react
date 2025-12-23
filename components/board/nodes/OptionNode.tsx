@@ -8,7 +8,8 @@ export type OptionNodeData = {
   philosophyLine: string;
 };
 
-export default function OptionNode({ data }: NodeProps<OptionNodeData>) {
+export default function OptionNode(props: NodeProps) {
+  const data = props.data as OptionNodeData;
   return (
     <div className="relative w-[260px] max-w-[90vw]">
       <Card className="h-full border-primary/15 bg-gradient-to-br from-secondary/10 via-background to-primary/10 shadow-xl">
