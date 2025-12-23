@@ -19,6 +19,7 @@ export type OptionNodeData = {
   // eslint-disable-next-line no-unused-vars
   onCustomChange?: (value: string) => void;
   lockLabel?: string;
+  isMuted?: boolean;
 };
 
 export default function OptionNode(props: NodeProps) {
@@ -38,6 +39,7 @@ export default function OptionNode(props: NodeProps) {
           "group h-full border-primary/15 bg-gradient-to-br from-secondary/10 via-background to-primary/10 shadow-xl transition-all",
           "option-card option-card-appear",
           data.isSelected && "border-primary/50 ring-2 ring-primary/50 shadow-primary/30",
+          data.isMuted && !data.isSelected && "opacity-40 grayscale",
           selectable && "cursor-pointer hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-primary/20",
           data.isDisabled && !data.isSelected && "opacity-75 grayscale",
         )}
