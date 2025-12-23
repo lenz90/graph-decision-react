@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
+import type { ComponentType } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -8,7 +9,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
 } from "@xyflow/react";
-import type { Edge, Node, NodeTypes } from "@xyflow/react";
+import type { Edge, Node, NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import OptionNode, { type OptionNodeData } from "./nodes/OptionNode";
@@ -39,7 +40,10 @@ function generateMockOptions(): MockOption[] {
   return mockOptions;
 }
 
-const nodeTypes = { root: RootNode, option: OptionNode } satisfies NodeTypes;
+const nodeTypes: Record<string, ComponentType<NodeProps>> = {
+  root: RootNode as ComponentType<NodeProps>,
+  option: OptionNode as ComponentType<NodeProps>,
+};
 
 function DecisionBoardCanvas() {
   const [rootText, setRootText] = useState("");
