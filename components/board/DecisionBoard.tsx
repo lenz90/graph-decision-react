@@ -8,6 +8,7 @@ import {
   Controls,
   ReactFlow,
   ReactFlowProvider,
+  useNodesInitialized,
   useReactFlow,
 } from "@xyflow/react";
 import type { Edge, Node, NodeProps } from "@xyflow/react";
@@ -78,6 +79,7 @@ function formatDuration(ms: number) {
 
 function DecisionBoardCanvas() {
   const reactFlow = useReactFlow();
+  const nodesInitialized = useNodesInitialized();
   const [rootText, setRootText] = useState("");
   const [optionsGenerated, setOptionsGenerated] = useState(false);
   const [rootHighlight, setRootHighlight] = useState(false);
@@ -173,8 +175,18 @@ function DecisionBoardCanvas() {
       setSelection({ choiceId, text, type });
       setRevealDisplayed(false);
       setNextOptionsGenerated(false);
+
+      if (nodesInitialized) {
+        const node = reactFlow.getNode(choiceId);
+        if (node) {
+          reactFlow.setCenter(node.position.x + 120, node.position.y + 40, {
+            zoom: 0.95,
+            duration: 640,
+          });
+        }
+      }
     },
-    [changeWindowClosed, lockStartedAt, optionsGenerated],
+    [changeWindowClosed, lockStartedAt, nodesInitialized, optionsGenerated, reactFlow],
   );
 
   const handleGenerateNext = useCallback(() => {
@@ -190,8 +202,9 @@ function DecisionBoardCanvas() {
       onGenerate: handleGenerateOptions,
       canGenerate: !optionsGenerated && rootText.trim().length > 0,
       isLocked: optionsGenerated,
+      isFrozen: Boolean(selection),
     }),
-    [handleGenerateOptions, handleRootChange, optionsGenerated, rootText],
+    [handleGenerateOptions, handleRootChange, optionsGenerated, rootText, selection],
   );
 
   const nodes: Node<OptionNodeData | RootNodeData | RevealedNodeData>[] = useMemo(() => {
@@ -206,9 +219,12 @@ function DecisionBoardCanvas() {
     ];
 
     if (optionsGenerated) {
+      const angleOffsets = [-26, -8, 8, 26];
+      const radius = 420;
       options.forEach((option, index) => {
         const id = `option-${index + 1}`;
-        const position = { x: 420, y: -180 + index * 120 };
+        const angle = (angleOffsets[index] * Math.PI) / 180;
+        const position = { x: Math.cos(angle) * radius + 140, y: Math.sin(angle) * radius };
         list.push({
           id,
           type: "option",
@@ -221,6 +237,7 @@ function DecisionBoardCanvas() {
             onSelect: () => handleSelect(id, option.label, "option"),
             lockLabel: changeWindowClosed ? "Change window closed" : undefined,
             isLocked: changeWindowClosed,
+            isMuted: Boolean(selection && selection.choiceId !== id),
           },
         });
       });
@@ -228,7 +245,7 @@ function DecisionBoardCanvas() {
       list.push({
         id: "custom",
         type: "option",
-        position: { x: 420, y: 320 },
+        position: { x: 520, y: 260 },
         data: {
           label: "Custom decision",
           isCustom: true,
@@ -239,6 +256,7 @@ function DecisionBoardCanvas() {
           onCustomChange: setCustomText,
           lockLabel: changeWindowClosed ? "Change window closed" : undefined,
           isLocked: changeWindowClosed,
+          isMuted: Boolean(selection && selection.choiceId !== "custom"),
         },
       });
     }
@@ -297,12 +315,14 @@ function DecisionBoardCanvas() {
           id: `edge-root-${index + 1}`,
           source: "root",
           target: `option-${index + 1}`,
+          type: "smoothstep",
         });
       });
       generatedEdges.push({
         id: "edge-root-custom",
         source: "root",
         target: "custom",
+        type: "smoothstep",
       });
     }
 
@@ -312,6 +332,7 @@ function DecisionBoardCanvas() {
         source: selection.choiceId,
         target: "revealed",
         animated: true,
+        type: "smoothstep",
       });
     }
 
@@ -351,6 +372,12 @@ function DecisionBoardCanvas() {
       {showGuidance ? (
         <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-primary/20 bg-background/90 px-4 py-2 text-xs font-medium text-muted-foreground shadow">
           Choose 1 of 4 options, or write your own.
+        </div>
+      ) : null}
+
+      {selection && !lockExpired ? (
+        <div className="pointer-events-none absolute left-1/2 bottom-3 z-10 -translate-x-1/2 rounded-full border border-primary/15 bg-background/90 px-4 py-2 text-[11px] font-medium text-muted-foreground shadow-sm backdrop-blur">
+          Decision locked. Take time to reflect.
         </div>
       ) : null}
 
@@ -400,7 +427,11 @@ function DecisionBoardCanvas() {
           [-5000, -5000],
           [5000, 5000],
         ]}
-        defaultEdgeOptions={{ animated: false }}
+        defaultEdgeOptions={{
+          animated: false,
+          type: "smoothstep",
+          style: { strokeWidth: 2.4, stroke: "rgba(59, 130, 246, 0.45)" },
+        }}
         proOptions={{ hideAttribution: true }}
       >
         <Background variant={BackgroundVariant.Dots} gap={28} size={2} color="rgba(148, 163, 184, 0.45)" />
