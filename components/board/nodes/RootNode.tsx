@@ -13,7 +13,8 @@ export type RootNodeData = {
   isLocked: boolean;
 };
 
-export default function RootNode({ data }: NodeProps<RootNodeData>) {
+export default function RootNode(props: NodeProps) {
+  const data = props.data as RootNodeData;
   return (
     <div className="relative w-[360px] max-w-[90vw]">
       <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/30 shadow-2xl shadow-primary/10">
