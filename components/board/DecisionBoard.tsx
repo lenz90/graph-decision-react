@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import {
   Background,
@@ -8,6 +8,7 @@ import {
   Controls,
   ReactFlow,
   ReactFlowProvider,
+  useReactFlow,
 } from "@xyflow/react";
 import type { Edge, Node, NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -46,13 +47,16 @@ const nodeTypes: Record<string, ComponentType<NodeProps>> = {
 };
 
 function DecisionBoardCanvas() {
+  const reactFlow = useReactFlow();
   const [rootText, setRootText] = useState("");
   const [optionsGenerated, setOptionsGenerated] = useState(false);
+  const [rootHighlight, setRootHighlight] = useState(false);
   const [nodes, setNodes] = useState<Node<OptionNodeData | RootNodeData>[]>([
     {
       id: "root",
       type: "root",
       position: { x: 0, y: 0 },
+      className: "root-node",
       data: {
         situation: "",
         onChange: () => {},
@@ -79,6 +83,7 @@ function DecisionBoardCanvas() {
       id: `option-${index + 1}`,
       type: "option",
       position: { x: 420 + index * 260, y: -180 + index * 120 },
+      className: "option-node option-node-enter",
       data: {
         label: option.label,
         philosophyLine: option.philosophyLine,
@@ -95,6 +100,7 @@ function DecisionBoardCanvas() {
     setNodes((current) => [...current.filter((node) => node.id === "root"), ...optionNodes]);
     setEdges(optionEdges);
     setOptionsGenerated(true);
+    setRootHighlight(true);
   }, [optionsGenerated, rootText]);
 
   const rootNodeData: RootNodeData = useMemo(
@@ -114,10 +120,32 @@ function DecisionBoardCanvas() {
         ? {
             ...node,
             data: rootNodeData,
+            className: rootHighlight ? "root-node root-node-emphasis" : "root-node",
           }
         : node,
     );
-  }, [nodes, rootNodeData]);
+  }, [nodes, rootHighlight, rootNodeData]);
+
+  useEffect(() => {
+    if (!optionsGenerated || nodes.length <= 1) return;
+
+    const timeout = window.setTimeout(() => {
+      reactFlow.fitView({
+        padding: 0.24,
+        includeHiddenNodes: true,
+        duration: 900,
+      });
+    }, 120);
+
+    return () => window.clearTimeout(timeout);
+  }, [nodes, optionsGenerated, reactFlow]);
+
+  useEffect(() => {
+    if (!rootHighlight) return;
+
+    const timeout = window.setTimeout(() => setRootHighlight(false), 1400);
+    return () => window.clearTimeout(timeout);
+  }, [rootHighlight]);
 
   return (
     <div className="h-full w-full">

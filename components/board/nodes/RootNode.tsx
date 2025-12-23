@@ -17,7 +17,7 @@ export default function RootNode(props: NodeProps) {
   const data = props.data as RootNodeData;
   return (
     <div className="relative w-[360px] max-w-[90vw]">
-      <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/30 shadow-2xl shadow-primary/10">
+      <Card className="root-card border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/30 shadow-2xl shadow-primary/10">
         <CardHeader className="space-y-1 pb-3">
           <CardTitle className="text-xl font-semibold">Your Situation</CardTitle>
           <CardDescription className="text-muted-foreground">
