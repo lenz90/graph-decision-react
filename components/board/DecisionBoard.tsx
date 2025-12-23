@@ -14,7 +14,10 @@ import type { Edge, Node, NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import OptionNode, { type OptionNodeData } from "./nodes/OptionNode";
+import RevealedNode, { type RevealedNodeData } from "./nodes/RevealedNode";
 import RootNode, { type RootNodeData } from "./nodes/RootNode";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 type MockOption = Pick<OptionNodeData, "label" | "philosophyLine">;
 
@@ -37,6 +40,25 @@ const mockOptions: MockOption[] = [
   },
 ];
 
+const STORAGE_KEY = "decision-board-state-v2";
+const LOCK_DURATION_MS = 5 * 60 * 1000;
+const CHANGE_WINDOW_MS = 2 * 60 * 1000;
+
+type SelectionState = {
+  choiceId: string;
+  text: string;
+  type: "option" | "custom";
+};
+
+type PersistedState = {
+  rootText: string;
+  optionsGenerated: boolean;
+  options: MockOption[];
+  customText: string;
+  selection: SelectionState | null;
+  lockStartedAt: number | null;
+};
+
 function generateMockOptions(): MockOption[] {
   return mockOptions;
 }
@@ -44,117 +66,329 @@ function generateMockOptions(): MockOption[] {
 const nodeTypes: Record<string, ComponentType<NodeProps>> = {
   root: RootNode as ComponentType<NodeProps>,
   option: OptionNode as ComponentType<NodeProps>,
+  revealed: RevealedNode as ComponentType<NodeProps>,
 };
+
+function formatDuration(ms: number) {
+  const clamped = Math.max(0, ms);
+  const minutes = Math.floor(clamped / 60000);
+  const seconds = Math.floor((clamped % 60000) / 1000);
+  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
 
 function DecisionBoardCanvas() {
   const reactFlow = useReactFlow();
   const [rootText, setRootText] = useState("");
   const [optionsGenerated, setOptionsGenerated] = useState(false);
   const [rootHighlight, setRootHighlight] = useState(false);
-  const [nodes, setNodes] = useState<Node<OptionNodeData | RootNodeData>[]>([
-    {
-      id: "root",
-      type: "root",
-      position: { x: 0, y: 0 },
-      className: "root-node",
-      data: {
-        situation: "",
-        onChange: () => {},
-        onGenerate: () => {},
-        canGenerate: false,
-        isLocked: false,
-      },
-    },
-  ]);
-  const [edges, setEdges] = useState<Edge[]>([]);
+  const [options, setOptions] = useState<MockOption[]>([]);
+  const [customText, setCustomText] = useState("");
+  const [selection, setSelection] = useState<SelectionState | null>(null);
+  const [lockStartedAt, setLockStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
+  const [revealDisplayed, setRevealDisplayed] = useState(false);
+  const [nextOptionsGenerated, setNextOptionsGenerated] = useState(false);
+
+  const hasSelection = Boolean(selection && lockStartedAt);
+  const elapsedSinceLock = hasSelection && lockStartedAt ? now - lockStartedAt : 0;
+  const changeRemaining = hasSelection ? Math.max(0, CHANGE_WINDOW_MS - elapsedSinceLock) : 0;
+  const lockRemaining = hasSelection ? Math.max(0, LOCK_DURATION_MS - elapsedSinceLock) : 0;
+  const changeWindowClosed = hasSelection && elapsedSinceLock >= CHANGE_WINDOW_MS;
+  const lockExpired = hasSelection && elapsedSinceLock >= LOCK_DURATION_MS;
+
+  useEffect(() => {
+    const savedRaw = typeof window !== "undefined" ? window.localStorage.getItem(STORAGE_KEY) : null;
+    if (!savedRaw) return;
+
+    try {
+      const parsed = JSON.parse(savedRaw) as PersistedState;
+      setRootText(parsed.rootText ?? "");
+      setOptionsGenerated(Boolean(parsed.optionsGenerated));
+      setOptions(parsed.options?.length ? parsed.options : mockOptions);
+      setCustomText(parsed.customText ?? "");
+      setSelection(parsed.selection ?? null);
+      setLockStartedAt(parsed.lockStartedAt ?? null);
+    } catch (error) {
+      console.error("Failed to restore board state", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const state: PersistedState = {
+      rootText,
+      optionsGenerated,
+      options,
+      customText,
+      selection,
+      lockStartedAt,
+    };
+
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [customText, lockStartedAt, options, optionsGenerated, rootText, selection]);
+
+  useEffect(() => {
+    if (!rootHighlight) return;
+    const timeout = window.setTimeout(() => setRootHighlight(false), 1400);
+    return () => window.clearTimeout(timeout);
+  }, [rootHighlight]);
+
+  useEffect(() => {
+    if (lockExpired && selection) {
+      setRevealDisplayed(true);
+    }
+  }, [lockExpired, selection]);
 
   const handleRootChange = useCallback((value: string) => {
     setRootText(value);
   }, []);
 
   const handleGenerateOptions = useCallback(() => {
-    if (optionsGenerated || rootText.length === 0) {
+    if (optionsGenerated || rootText.trim().length === 0) {
       return;
     }
 
     const generated = generateMockOptions();
-
-    const optionNodes: Node<OptionNodeData>[] = generated.map((option, index) => ({
-      id: `option-${index + 1}`,
-      type: "option",
-      position: { x: 420 + index * 260, y: -180 + index * 120 },
-      className: "option-node option-node-enter",
-      data: {
-        label: option.label,
-        philosophyLine: option.philosophyLine,
-      },
-    }));
-
-    const optionEdges: Edge[] = generated.map((_, index) => ({
-      id: `edge-root-${index + 1}`,
-      source: "root",
-      target: `option-${index + 1}`,
-      animated: false,
-    }));
-
-    setNodes((current) => [...current.filter((node) => node.id === "root"), ...optionNodes]);
-    setEdges(optionEdges);
+    setOptions(generated);
     setOptionsGenerated(true);
     setRootHighlight(true);
+    setSelection(null);
+    setLockStartedAt(null);
+    setRevealDisplayed(false);
+    setNextOptionsGenerated(false);
   }, [optionsGenerated, rootText]);
+
+  const handleSelect = useCallback(
+    (choiceId: string, text: string, type: SelectionState["type"]) => {
+      if (type === "custom" && text.trim().length === 0) return;
+      if (changeWindowClosed) return;
+      if (!optionsGenerated) return;
+
+      const startedAt = lockStartedAt ?? Date.now();
+      setLockStartedAt(startedAt);
+      setSelection({ choiceId, text, type });
+      setRevealDisplayed(false);
+      setNextOptionsGenerated(false);
+    },
+    [changeWindowClosed, lockStartedAt, optionsGenerated],
+  );
+
+  const handleGenerateNext = useCallback(() => {
+    if (!revealDisplayed || !selection) return;
+    setNextOptionsGenerated(true);
+    setRevealDisplayed(true);
+  }, [revealDisplayed, selection]);
 
   const rootNodeData: RootNodeData = useMemo(
     () => ({
       situation: rootText,
       onChange: handleRootChange,
       onGenerate: handleGenerateOptions,
-      canGenerate: !optionsGenerated && rootText.length > 0,
+      canGenerate: !optionsGenerated && rootText.trim().length > 0,
       isLocked: optionsGenerated,
     }),
     [handleGenerateOptions, handleRootChange, optionsGenerated, rootText],
   );
 
-  const nodesWithData = useMemo(() => {
-    return nodes.map((node) =>
-      node.id === "root"
-        ? {
-            ...node,
-            data: rootNodeData,
-            className: rootHighlight ? "root-node root-node-emphasis" : "root-node",
-          }
-        : node,
-    );
-  }, [nodes, rootHighlight, rootNodeData]);
+  const nodes: Node<OptionNodeData | RootNodeData | RevealedNodeData>[] = useMemo(() => {
+    const list: Node<OptionNodeData | RootNodeData | RevealedNodeData>[] = [
+      {
+        id: "root",
+        type: "root",
+        position: { x: 0, y: 0 },
+        className: rootHighlight ? "root-node root-node-emphasis" : "root-node",
+        data: rootNodeData,
+      },
+    ];
 
-  useEffect(() => {
-    if (!optionsGenerated || nodes.length <= 1) return;
-
-    const timeout = window.setTimeout(() => {
-      reactFlow.fitView({
-        padding: 0.24,
-        includeHiddenNodes: true,
-        duration: 900,
+    if (optionsGenerated) {
+      options.forEach((option, index) => {
+        const id = `option-${index + 1}`;
+        const position = { x: 420, y: -180 + index * 120 };
+        list.push({
+          id,
+          type: "option",
+          position,
+          data: {
+            label: option.label,
+            philosophyLine: option.philosophyLine,
+            isSelected: selection?.choiceId === id,
+            isDisabled: Boolean(selection && changeWindowClosed && selection.choiceId !== id),
+            onSelect: () => handleSelect(id, option.label, "option"),
+            lockLabel: changeWindowClosed ? "Change window closed" : undefined,
+            isLocked: changeWindowClosed,
+          },
+        });
       });
-    }, 120);
 
-    return () => window.clearTimeout(timeout);
-  }, [nodes, optionsGenerated, reactFlow]);
+      list.push({
+        id: "custom",
+        type: "option",
+        position: { x: 420, y: 320 },
+        data: {
+          label: "Custom decision",
+          isCustom: true,
+          isSelected: selection?.choiceId === "custom",
+          isDisabled: Boolean(selection && changeWindowClosed),
+          onSelect: () => handleSelect("custom", customText.trim(), "custom"),
+          customText,
+          onCustomChange: setCustomText,
+          lockLabel: changeWindowClosed ? "Change window closed" : undefined,
+          isLocked: changeWindowClosed,
+        },
+      });
+    }
+
+    if (revealDisplayed && selection) {
+      list.push({
+        id: "revealed",
+        type: "revealed",
+        position: { x: 900, y: 60 },
+        data: {
+          finalText: selection.text,
+          onGenerateNext: handleGenerateNext,
+          canGenerateNext: !nextOptionsGenerated,
+          lockExpiredLabel: "Lock expired (mock 5 min). Continue to the next level.",
+        },
+      });
+    }
+
+    if (nextOptionsGenerated && revealDisplayed) {
+      generateMockOptions().forEach((option, index) => {
+        const nodeId = `next-option-${index + 1}`;
+        list.push({
+          id: nodeId,
+          type: "option",
+          position: { x: 1320, y: -140 + index * 120 },
+          data: {
+            label: `${option.label} (next)`,
+            philosophyLine: option.philosophyLine,
+            isDisabled: true,
+            lockLabel: "Next day preview",
+          },
+        });
+      });
+    }
+
+    return list;
+  }, [
+    changeWindowClosed,
+    customText,
+    handleSelect,
+    handleGenerateNext,
+    nextOptionsGenerated,
+    options,
+    optionsGenerated,
+    revealDisplayed,
+    rootHighlight,
+    rootNodeData,
+    selection,
+  ]);
+
+  const edges: Edge[] = useMemo(() => {
+    const generatedEdges: Edge[] = [];
+    if (optionsGenerated) {
+      options.forEach((_, index) => {
+        generatedEdges.push({
+          id: `edge-root-${index + 1}`,
+          source: "root",
+          target: `option-${index + 1}`,
+        });
+      });
+      generatedEdges.push({
+        id: "edge-root-custom",
+        source: "root",
+        target: "custom",
+      });
+    }
+
+    if (revealDisplayed && selection) {
+      generatedEdges.push({
+        id: "edge-selection-reveal",
+        source: selection.choiceId,
+        target: "revealed",
+        animated: true,
+      });
+    }
+
+    if (nextOptionsGenerated && revealDisplayed) {
+      generateMockOptions().forEach((_, index) => {
+        const nodeId = `next-option-${index + 1}`;
+        generatedEdges.push({
+          id: `edge-reveal-${nodeId}`,
+          source: "revealed",
+          target: nodeId,
+        });
+      });
+    }
+
+    return generatedEdges;
+  }, [nextOptionsGenerated, options, optionsGenerated, revealDisplayed, selection]);
+
+  const showGuidance = optionsGenerated;
 
   useEffect(() => {
-    if (!rootHighlight) return;
+    if (nodes.length <= 1) return;
+    const timeout = window.setTimeout(
+      () =>
+        reactFlow.fitView({
+          padding: 0.28,
+          includeHiddenNodes: true,
+          duration: 820,
+        }),
+      140,
+    );
 
-    const timeout = window.setTimeout(() => setRootHighlight(false), 1400);
     return () => window.clearTimeout(timeout);
-  }, [rootHighlight]);
+  }, [nodes.length, reactFlow]);
 
   return (
-    <div className="h-full w-full">
+    <div className="relative h-full w-full">
+      {showGuidance ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-10 -translate-x-1/2 rounded-full border border-primary/20 bg-background/90 px-4 py-2 text-xs font-medium text-muted-foreground shadow">
+          Choose 1 of 4 options, or write your own.
+        </div>
+      ) : null}
+
+      {selection && (
+        <div className="pointer-events-none absolute right-4 top-4 z-10 flex flex-col gap-2 text-xs">
+          <div
+            className={cn(
+              "flex items-center gap-2 rounded-full border px-3 py-1 shadow-sm backdrop-blur",
+              lockExpired ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-900 dark:text-emerald-100" : "border-primary/30 bg-background/85 text-muted-foreground",
+            )}
+          >
+            <Badge variant="secondary" className="pointer-events-auto bg-primary/10 text-primary">
+              Lock
+            </Badge>
+            {lockExpired ? "Lock expired — reveal unlocked" : `Locked for ${formatDuration(lockRemaining)}`}
+          </div>
+          <div
+            className={cn(
+              "flex items-center gap-2 rounded-full border px-3 py-1 shadow-sm backdrop-blur",
+              changeWindowClosed
+                ? "border-amber-400/40 bg-amber-500/10 text-amber-900 dark:text-amber-100"
+                : "border-primary/25 bg-background/80 text-muted-foreground",
+            )}
+          >
+            <Badge variant="outline" className="pointer-events-auto border-muted-foreground/30 text-muted-foreground">
+              Change window
+            </Badge>
+            {changeWindowClosed ? "Change window closed" : `You can switch for ${formatDuration(changeRemaining)}`}
+          </div>
+        </div>
+      )}
+
       <ReactFlow
-        nodes={nodesWithData}
+        nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.28 }}
         minZoom={0.4}
         maxZoom={1.75}
         panOnScroll
