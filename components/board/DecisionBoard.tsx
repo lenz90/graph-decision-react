@@ -5,12 +5,10 @@ import {
   Background,
   BackgroundVariant,
   Controls,
-  Edge,
-  Node,
-  type NodeTypes,
   ReactFlow,
   ReactFlowProvider,
 } from "@xyflow/react";
+import type { Edge, Node, NodeTypes } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
 import OptionNode, { type OptionNodeData } from "./nodes/OptionNode";
@@ -41,23 +39,26 @@ function generateMockOptions(): MockOption[] {
   return mockOptions;
 }
 
+const nodeTypes = { root: RootNode, option: OptionNode } satisfies NodeTypes;
+
 function DecisionBoardCanvas() {
   const [rootText, setRootText] = useState("");
   const [optionsGenerated, setOptionsGenerated] = useState(false);
-  const [nodes, setNodes] = useState<Node[]>([
+  const [nodes, setNodes] = useState<Node<OptionNodeData | RootNodeData>[]>([
     {
       id: "root",
       type: "root",
       position: { x: 0, y: 0 },
-      data: {},
+      data: {
+        situation: "",
+        onChange: () => {},
+        onGenerate: () => {},
+        canGenerate: false,
+        isLocked: false,
+      },
     },
   ]);
   const [edges, setEdges] = useState<Edge[]>([]);
-
-  const nodeTypes: NodeTypes = useMemo(
-    () => ({ root: RootNode, option: OptionNode }),
-    [],
-  );
 
   const handleRootChange = useCallback((value: string) => {
     setRootText(value);
