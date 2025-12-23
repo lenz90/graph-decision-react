@@ -23,7 +23,8 @@ placeholder UI so future graph logic can be layered in.
 ## Routes
 - `/` redirects to `/onboarding`.
 - `/onboarding` introduces the product tone and philosophy selectors.
-- `/board` holds the placeholder daily decision board.
+- `/board` renders the React Flow-powered decision board canvas. Open this route directly to explore the
+  graph view.
 
 ## Notes
 - No backend, authentication, or API calls are included yet.
