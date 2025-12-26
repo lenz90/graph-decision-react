@@ -85,6 +85,54 @@ const OPTION_POSITIONS = [
 ];
 const CUSTOM_POSITION = { x: 420, y: 300 };
 
+type OptionNodeLayout = {
+  id: string;
+  label: string;
+  position: { x: number; y: number };
+  appearanceOrder: number;
+};
+
+const OPTION_NODE_LAYOUTS: OptionNodeLayout[] = [
+  { id: "option-a", label: "Option A", position: OPTION_POSITIONS[0], appearanceOrder: 0 },
+  { id: "option-b", label: "Option B", position: OPTION_POSITIONS[1], appearanceOrder: 1 },
+  { id: "option-c", label: "Option C", position: OPTION_POSITIONS[2], appearanceOrder: 2 },
+  { id: "option-d", label: "Option D", position: OPTION_POSITIONS[3], appearanceOrder: 3 },
+];
+
+const CUSTOM_NODE_LAYOUT: OptionNodeLayout = {
+  id: "custom-decision",
+  label: "Custom Decision",
+  position: CUSTOM_POSITION,
+  appearanceOrder: 4,
+};
+
+const BRANCH_EDGE_STYLE = { strokeWidth: 2.6, stroke: "rgba(59, 130, 246, 0.7)" };
+const BRANCH_EDGE_MARKER = {
+  type: MarkerType.ArrowClosed,
+  width: 22,
+  height: 22,
+  color: "rgba(59, 130, 246, 0.7)",
+};
+
+function normalizeSelection(selection: SelectionState | null): SelectionState | null {
+  if (!selection) return null;
+
+  const legacyMatch = selection.choiceId.match(/^option-(\d+)$/);
+  if (legacyMatch) {
+    const index = Number.parseInt(legacyMatch[1], 10) - 1;
+    const layout = OPTION_NODE_LAYOUTS[index];
+    if (layout) {
+      return { ...selection, choiceId: layout.id };
+    }
+  }
+
+  if (selection.choiceId === "custom") {
+    return { ...selection, choiceId: CUSTOM_NODE_LAYOUT.id };
+  }
+
+  return selection;
+}
+
 function formatDuration(ms: number) {
   const clamped = Math.max(0, ms);
   const minutes = Math.floor(clamped / 60000);
@@ -93,11 +141,12 @@ function formatDuration(ms: number) {
 }
 
 function derivePhaseFromPersisted(
-  parsed: Partial<PersistedState> & { optionsGenerated?: boolean },
+  parsed: Partial<PersistedState> & { optionsGenerated?: boolean; selection?: SelectionState | null },
 ): BoardPhase {
+  const selection = parsed.selection ?? null;
   if (parsed.phase) return parsed.phase;
-  if (parsed.revealDisplayed && parsed.selection) return "revealed";
-  if (parsed.selection) {
+  if (parsed.revealDisplayed && selection) return "revealed";
+  if (selection) {
     const elapsedSinceLock = parsed.lockStartedAt ? Date.now() - parsed.lockStartedAt : 0;
     if (elapsedSinceLock >= LOCK_DURATION_MS) return "revealed";
     if (elapsedSinceLock >= CHANGE_WINDOW_MS) return "locked";
@@ -134,14 +183,20 @@ function DecisionBoardCanvas() {
 
     try {
       const parsed = JSON.parse(savedRaw) as Partial<PersistedState> & { optionsGenerated?: boolean };
+      const normalizedSelection = normalizeSelection(parsed.selection ?? null);
       setRootText(parsed.rootText ?? "");
       setOptions(parsed.options?.length ? parsed.options : mockOptions);
       setCustomText(parsed.customText ?? "");
-      setSelection(parsed.selection ?? null);
+      setSelection(normalizedSelection);
       setLockStartedAt(parsed.lockStartedAt ?? null);
       setRevealDisplayed(parsed.revealDisplayed ?? false);
       setNextOptionsGenerated(parsed.nextOptionsGenerated ?? false);
-      setPhase(derivePhaseFromPersisted(parsed));
+      setPhase(
+        derivePhaseFromPersisted({
+          ...parsed,
+          selection: normalizedSelection,
+        }),
+      );
     } catch (error) {
       console.error("Failed to restore board state", error);
     }
@@ -277,45 +332,47 @@ function DecisionBoardCanvas() {
     ];
 
     if (phase !== "draft") {
-      options.forEach((option, index) => {
-        const id = `option-${index + 1}`;
-        const position = OPTION_POSITIONS[index] ?? { x: 420, y: -180 + index * 120 };
+      OPTION_NODE_LAYOUTS.forEach((layout, index) => {
+        const option = options[index];
+        if (!option) return;
         list.push({
-          id,
+          id: layout.id,
           type: "option",
-          position,
+          position: layout.position,
           targetPosition: Position.Left,
           sourcePosition: Position.Right,
           data: {
-            label: option.label,
+            label: `${layout.label}: ${option.label}`,
             philosophyLine: option.philosophyLine,
-            isSelected: selection?.choiceId === id,
-            isDisabled: Boolean(selection && changeWindowClosed && selection.choiceId !== id),
-            onSelect: () => handleSelect(id, option.label, "option"),
+            isSelected: selection?.choiceId === layout.id,
+            isDisabled: Boolean(selection && changeWindowClosed && selection.choiceId !== layout.id),
+            onSelect: () => handleSelect(layout.id, option.label, "option"),
             lockLabel: changeWindowClosed ? "Change window closed" : undefined,
             isLocked: changeWindowClosed,
-            isMuted: Boolean(selection && selection.choiceId !== id),
+            isMuted: Boolean(selection && selection.choiceId !== layout.id),
+            appearanceOrder: layout.appearanceOrder,
           },
         });
       });
 
       list.push({
-        id: "custom",
+        id: CUSTOM_NODE_LAYOUT.id,
         type: "option",
-        position: CUSTOM_POSITION,
+        position: CUSTOM_NODE_LAYOUT.position,
         targetPosition: Position.Left,
         sourcePosition: Position.Right,
         data: {
-          label: "Custom decision",
+          label: CUSTOM_NODE_LAYOUT.label,
           isCustom: true,
-          isSelected: selection?.choiceId === "custom",
+          isSelected: selection?.choiceId === CUSTOM_NODE_LAYOUT.id,
           isDisabled: Boolean(selection && changeWindowClosed),
-          onSelect: () => handleSelect("custom", customText.trim(), "custom"),
+          onSelect: () => handleSelect(CUSTOM_NODE_LAYOUT.id, customText.trim(), "custom"),
           customText,
           onCustomChange: setCustomText,
           lockLabel: changeWindowClosed ? "Change window closed" : undefined,
           isLocked: changeWindowClosed,
-          isMuted: Boolean(selection && selection.choiceId !== "custom"),
+          isMuted: Boolean(selection && selection.choiceId !== CUSTOM_NODE_LAYOUT.id),
+          appearanceOrder: CUSTOM_NODE_LAYOUT.appearanceOrder,
         },
       });
     }
@@ -349,6 +406,7 @@ function DecisionBoardCanvas() {
             philosophyLine: option.philosophyLine,
             isDisabled: true,
             lockLabel: "Next day preview",
+            appearanceOrder: index,
           },
         });
       });
@@ -372,19 +430,24 @@ function DecisionBoardCanvas() {
   const edges: Edge[] = useMemo(() => {
     const generatedEdges: Edge[] = [];
     if (phase !== "draft") {
-      options.forEach((_, index) => {
+      OPTION_NODE_LAYOUTS.forEach((layout, index) => {
+        if (!options[index]) return;
         generatedEdges.push({
-          id: `edge-root-${index + 1}`,
+          id: `edge-root-${layout.id}`,
           source: "root",
-          target: `option-${index + 1}`,
+          target: layout.id,
           type: "smoothstep",
+          markerEnd: { ...BRANCH_EDGE_MARKER },
+          style: BRANCH_EDGE_STYLE,
         });
       });
       generatedEdges.push({
-        id: "edge-root-custom",
+        id: `edge-root-${CUSTOM_NODE_LAYOUT.id}`,
         source: "root",
-        target: "custom",
+        target: CUSTOM_NODE_LAYOUT.id,
         type: "smoothstep",
+        markerEnd: { ...BRANCH_EDGE_MARKER },
+        style: BRANCH_EDGE_STYLE,
       });
     }
 

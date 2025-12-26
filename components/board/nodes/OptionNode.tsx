@@ -20,15 +20,21 @@ export type OptionNodeData = {
   onCustomChange?: (value: string) => void;
   lockLabel?: string;
   isMuted?: boolean;
+  appearanceOrder?: number;
 };
 
 export default function OptionNode(props: NodeProps) {
   const data = props.data as OptionNodeData;
   const appearanceDelay = useMemo(() => {
-    const match = props.id?.match(/option-(\d+)/);
-    const index = match ? Number.parseInt(match[1], 10) - 1 : 0;
+    const index =
+      typeof data.appearanceOrder === "number"
+        ? data.appearanceOrder
+        : (() => {
+            const match = props.id?.match(/option-(\d+)/);
+            return match ? Number.parseInt(match[1], 10) - 1 : 0;
+          })();
     return `${Math.max(0, Math.min(index, 3)) * 140}ms`;
-  }, [props.id]);
+  }, [data.appearanceOrder, props.id]);
 
   const selectable = Boolean(data.onSelect) && !data.isDisabled && (!data.isCustom || Boolean(data.customText));
 
