@@ -29,7 +29,7 @@ export default function RootNode(props: NodeProps) {
         <CardHeader className="space-y-1 pb-3">
           <div className="flex items-start justify-between gap-2">
             <div className="space-y-1">
-              <CardTitle className="text-xl font-semibold">Your Situation</CardTitle>
+              <CardTitle className="text-xl font-semibold">Your situation</CardTitle>
               <CardDescription className="text-muted-foreground">
                 The adventure starts here.
               </CardDescription>
