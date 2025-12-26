@@ -41,9 +41,11 @@ const mockOptions: MockOption[] = [
   },
 ];
 
-const STORAGE_KEY = "decision-board-state-v2";
+const STORAGE_KEY = "decision-board-state-v3";
 const LOCK_DURATION_MS = 5 * 60 * 1000;
 const CHANGE_WINDOW_MS = 2 * 60 * 1000;
+
+type BoardPhase = "draft" | "generated" | "selected" | "locked" | "revealed";
 
 type SelectionState = {
   choiceId: string;
@@ -53,11 +55,13 @@ type SelectionState = {
 
 type PersistedState = {
   rootText: string;
-  optionsGenerated: boolean;
+  phase: BoardPhase;
   options: MockOption[];
   customText: string;
   selection: SelectionState | null;
   lockStartedAt: number | null;
+  revealDisplayed: boolean;
+  nextOptionsGenerated: boolean;
 };
 
 function generateMockOptions(): MockOption[] {
@@ -77,11 +81,26 @@ function formatDuration(ms: number) {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
 }
 
+function derivePhaseFromPersisted(
+  parsed: Partial<PersistedState> & { optionsGenerated?: boolean },
+): BoardPhase {
+  if (parsed.phase) return parsed.phase;
+  if (parsed.revealDisplayed && parsed.selection) return "revealed";
+  if (parsed.selection) {
+    const elapsedSinceLock = parsed.lockStartedAt ? Date.now() - parsed.lockStartedAt : 0;
+    if (elapsedSinceLock >= LOCK_DURATION_MS) return "revealed";
+    if (elapsedSinceLock >= CHANGE_WINDOW_MS) return "locked";
+    return "selected";
+  }
+  if (parsed.optionsGenerated) return "generated";
+  return "draft";
+}
+
 function DecisionBoardCanvas() {
   const reactFlow = useReactFlow();
   const nodesInitialized = useNodesInitialized();
+  const [phase, setPhase] = useState<BoardPhase>("draft");
   const [rootText, setRootText] = useState("");
-  const [optionsGenerated, setOptionsGenerated] = useState(false);
   const [rootHighlight, setRootHighlight] = useState(false);
   const [options, setOptions] = useState<MockOption[]>([]);
   const [customText, setCustomText] = useState("");
@@ -103,13 +122,15 @@ function DecisionBoardCanvas() {
     if (!savedRaw) return;
 
     try {
-      const parsed = JSON.parse(savedRaw) as PersistedState;
+      const parsed = JSON.parse(savedRaw) as Partial<PersistedState> & { optionsGenerated?: boolean };
       setRootText(parsed.rootText ?? "");
-      setOptionsGenerated(Boolean(parsed.optionsGenerated));
       setOptions(parsed.options?.length ? parsed.options : mockOptions);
       setCustomText(parsed.customText ?? "");
       setSelection(parsed.selection ?? null);
       setLockStartedAt(parsed.lockStartedAt ?? null);
+      setRevealDisplayed(parsed.revealDisplayed ?? false);
+      setNextOptionsGenerated(parsed.nextOptionsGenerated ?? false);
+      setPhase(derivePhaseFromPersisted(parsed));
     } catch (error) {
       console.error("Failed to restore board state", error);
     }
@@ -123,15 +144,17 @@ function DecisionBoardCanvas() {
   useEffect(() => {
     const state: PersistedState = {
       rootText,
-      optionsGenerated,
+      phase,
       options,
       customText,
       selection,
       lockStartedAt,
+      revealDisplayed,
+      nextOptionsGenerated,
     };
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [customText, lockStartedAt, options, optionsGenerated, rootText, selection]);
+  }, [customText, lockStartedAt, nextOptionsGenerated, options, phase, revealDisplayed, rootText, selection]);
 
   useEffect(() => {
     if (!rootHighlight) return;
@@ -140,41 +163,64 @@ function DecisionBoardCanvas() {
   }, [rootHighlight]);
 
   useEffect(() => {
+    if (revealDisplayed && selection) {
+      if (phase !== "revealed") {
+        setPhase("revealed");
+      }
+      return;
+    }
+
+    if (selection) {
+      const targetPhase = changeWindowClosed ? "locked" : "selected";
+      if (phase !== targetPhase) {
+        setPhase(targetPhase);
+      }
+      return;
+    }
+
+    if (phase !== "draft" && phase !== "generated") {
+      setPhase("generated");
+    }
+  }, [changeWindowClosed, phase, revealDisplayed, selection]);
+
+  useEffect(() => {
     if (lockExpired && selection) {
       setRevealDisplayed(true);
+      setPhase("revealed");
     }
-  }, [lockExpired, selection]);
+  }, [lockExpired, phase, selection]);
 
   const handleRootChange = useCallback((value: string) => {
     setRootText(value);
   }, []);
 
   const handleGenerateOptions = useCallback(() => {
-    if (optionsGenerated || rootText.trim().length === 0) {
+    if (phase !== "draft" || rootText.trim().length === 0) {
       return;
     }
 
     const generated = generateMockOptions();
     setOptions(generated);
-    setOptionsGenerated(true);
+    setPhase("generated");
     setRootHighlight(true);
     setSelection(null);
     setLockStartedAt(null);
     setRevealDisplayed(false);
     setNextOptionsGenerated(false);
-  }, [optionsGenerated, rootText]);
+  }, [phase, rootText]);
 
   const handleSelect = useCallback(
     (choiceId: string, text: string, type: SelectionState["type"]) => {
       if (type === "custom" && text.trim().length === 0) return;
       if (changeWindowClosed) return;
-      if (!optionsGenerated) return;
+      if (phase === "draft") return;
 
       const startedAt = lockStartedAt ?? Date.now();
       setLockStartedAt(startedAt);
       setSelection({ choiceId, text, type });
       setRevealDisplayed(false);
       setNextOptionsGenerated(false);
+      setPhase("selected");
 
       if (nodesInitialized) {
         const node = reactFlow.getNode(choiceId);
@@ -186,7 +232,7 @@ function DecisionBoardCanvas() {
         }
       }
     },
-    [changeWindowClosed, lockStartedAt, nodesInitialized, optionsGenerated, reactFlow],
+    [changeWindowClosed, lockStartedAt, nodesInitialized, phase, reactFlow],
   );
 
   const handleGenerateNext = useCallback(() => {
@@ -200,11 +246,11 @@ function DecisionBoardCanvas() {
       situation: rootText,
       onChange: handleRootChange,
       onGenerate: handleGenerateOptions,
-      canGenerate: !optionsGenerated && rootText.trim().length > 0,
-      isLocked: optionsGenerated,
+      canGenerate: phase === "draft" && rootText.trim().length > 0,
+      isLocked: phase !== "draft",
       isFrozen: Boolean(selection),
     }),
-    [handleGenerateOptions, handleRootChange, optionsGenerated, rootText, selection],
+    [handleGenerateOptions, handleRootChange, phase, rootText, selection],
   );
 
   const nodes: Node<OptionNodeData | RootNodeData | RevealedNodeData>[] = useMemo(() => {
@@ -218,7 +264,7 @@ function DecisionBoardCanvas() {
       },
     ];
 
-    if (optionsGenerated) {
+    if (phase !== "draft") {
       const angleOffsets = [-26, -8, 8, 26];
       const radius = 420;
       options.forEach((option, index) => {
@@ -300,7 +346,7 @@ function DecisionBoardCanvas() {
     handleGenerateNext,
     nextOptionsGenerated,
     options,
-    optionsGenerated,
+    phase,
     revealDisplayed,
     rootHighlight,
     rootNodeData,
@@ -309,7 +355,7 @@ function DecisionBoardCanvas() {
 
   const edges: Edge[] = useMemo(() => {
     const generatedEdges: Edge[] = [];
-    if (optionsGenerated) {
+    if (phase !== "draft") {
       options.forEach((_, index) => {
         generatedEdges.push({
           id: `edge-root-${index + 1}`,
@@ -348,9 +394,9 @@ function DecisionBoardCanvas() {
     }
 
     return generatedEdges;
-  }, [nextOptionsGenerated, options, optionsGenerated, revealDisplayed, selection]);
+  }, [nextOptionsGenerated, options, phase, revealDisplayed, selection]);
 
-  const showGuidance = optionsGenerated;
+  const showGuidance = phase !== "draft";
 
   useEffect(() => {
     if (nodes.length <= 1) return;
