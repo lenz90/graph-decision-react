@@ -149,3 +149,20 @@ a {
 .react-flow__edge-path {
   filter: drop-shadow(0 0 6px rgba(59, 130, 246, 0.2));
 }
+
+.node-handle {
+  width: 14px !important;
+  height: 14px !important;
+  background: hsl(var(--background));
+  border: 2px solid rgba(59, 130, 246, 0.7) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+  opacity: 0.9;
+}
+
+.node-handle-target {
+  border-color: rgba(59, 130, 246, 0.55) !important;
+}
+
+.node-handle-source {
+  background: rgba(59, 130, 246, 0.12);
+}

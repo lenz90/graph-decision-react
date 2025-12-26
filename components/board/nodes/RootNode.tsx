@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import type { NodeProps } from "@xyflow/react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 
 export type RootNodeData = {
@@ -20,6 +20,7 @@ export default function RootNode(props: NodeProps) {
   const data = props.data as RootNodeData;
   return (
     <div className="relative w-[360px] max-w-[90vw]">
+      <Handle type="source" position={Position.Right} className="node-handle node-handle-source" />
       <Card
         className={cn(
           "root-card border-primary/20 bg-gradient-to-br from-primary/5 via-background to-secondary/30 shadow-2xl shadow-primary/10 transition-all",
