@@ -6,6 +6,8 @@ import {
   Background,
   BackgroundVariant,
   Controls,
+  MarkerType,
+  Position,
   ReactFlow,
   ReactFlowProvider,
   useNodesInitialized,
@@ -73,6 +75,15 @@ const nodeTypes: Record<string, ComponentType<NodeProps>> = {
   option: OptionNode as ComponentType<NodeProps>,
   revealed: RevealedNode as ComponentType<NodeProps>,
 };
+
+const ROOT_POSITION = { x: 0, y: 0 };
+const OPTION_POSITIONS = [
+  { x: 420, y: -180 },
+  { x: 420, y: -60 },
+  { x: 420, y: 60 },
+  { x: 420, y: 180 },
+];
+const CUSTOM_POSITION = { x: 420, y: 300 };
 
 function formatDuration(ms: number) {
   const clamped = Math.max(0, ms);
@@ -258,23 +269,23 @@ function DecisionBoardCanvas() {
       {
         id: "root",
         type: "root",
-        position: { x: 0, y: 0 },
+        position: ROOT_POSITION,
         className: rootHighlight ? "root-node root-node-emphasis" : "root-node",
+        sourcePosition: Position.Right,
         data: rootNodeData,
       },
     ];
 
     if (phase !== "draft") {
-      const angleOffsets = [-26, -8, 8, 26];
-      const radius = 420;
       options.forEach((option, index) => {
         const id = `option-${index + 1}`;
-        const angle = (angleOffsets[index] * Math.PI) / 180;
-        const position = { x: Math.cos(angle) * radius + 140, y: Math.sin(angle) * radius };
+        const position = OPTION_POSITIONS[index] ?? { x: 420, y: -180 + index * 120 };
         list.push({
           id,
           type: "option",
           position,
+          targetPosition: Position.Left,
+          sourcePosition: Position.Right,
           data: {
             label: option.label,
             philosophyLine: option.philosophyLine,
@@ -291,7 +302,9 @@ function DecisionBoardCanvas() {
       list.push({
         id: "custom",
         type: "option",
-        position: { x: 520, y: 260 },
+        position: CUSTOM_POSITION,
+        targetPosition: Position.Left,
+        sourcePosition: Position.Right,
         data: {
           label: "Custom decision",
           isCustom: true,
@@ -312,6 +325,8 @@ function DecisionBoardCanvas() {
         id: "revealed",
         type: "revealed",
         position: { x: 900, y: 60 },
+        targetPosition: Position.Left,
+        sourcePosition: Position.Right,
         data: {
           finalText: selection.text,
           onGenerateNext: handleGenerateNext,
@@ -328,6 +343,7 @@ function DecisionBoardCanvas() {
           id: nodeId,
           type: "option",
           position: { x: 1320, y: -140 + index * 120 },
+          targetPosition: Position.Left,
           data: {
             label: `${option.label} (next)`,
             philosophyLine: option.philosophyLine,
@@ -476,7 +492,13 @@ function DecisionBoardCanvas() {
         defaultEdgeOptions={{
           animated: false,
           type: "smoothstep",
-          style: { strokeWidth: 2.4, stroke: "rgba(59, 130, 246, 0.45)" },
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            width: 22,
+            height: 22,
+            color: "rgba(59, 130, 246, 0.7)",
+          },
+          style: { strokeWidth: 2.6, stroke: "rgba(59, 130, 246, 0.7)" },
         }}
         proOptions={{ hideAttribution: true }}
       >

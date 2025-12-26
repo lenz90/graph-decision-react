@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import type { NodeProps } from "@xyflow/react";
+import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { cn } from "@/lib/utils";
 
 export type OptionNodeData = {
@@ -34,6 +34,8 @@ export default function OptionNode(props: NodeProps) {
 
   return (
     <div className="relative w-[260px] max-w-[92vw] option-card-shell">
+      <Handle type="target" position={Position.Left} className="node-handle node-handle-target" />
+      <Handle type="source" position={Position.Right} className="node-handle node-handle-source" />
       <Card
         className={cn(
           "group h-full border-primary/15 bg-gradient-to-br from-secondary/10 via-background to-primary/10 shadow-xl transition-all",
